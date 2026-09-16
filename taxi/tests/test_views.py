@@ -2,10 +2,11 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from taxi.models import Driver, Manufacturer
+from taxi.models import Manufacturer, Car
 
 MANUFACTURER_URL = reverse("taxi:manufacturer-list")
 DRIVER_URL = reverse("taxi:driver-list")
+CAR_URL = reverse("taxi:car-list")
 
 
 class PublicManufacturerTest(TestCase):
@@ -88,3 +89,82 @@ class PrivateDriverTest(TestCase):
         self.assertEqual(new_user.first_name, form_data["first_name"])
         self.assertEqual(new_user.last_name, form_data["last_name"])
         self.assertEqual(new_user.license_number, form_data["license_number"])
+
+
+class ManufacturerSearchTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test_user",
+            password="password123",
+        )
+        self.client.force_login(self.user)
+
+        self.manufacturer_bmw = Manufacturer.objects.create(
+            name="BMW", country="Germany"
+        )
+        self.manufacturer_audi = Manufacturer.objects.create(
+            name="Audi", country="Germany"
+        )
+        self.manufacturer_toyota = Manufacturer.objects.create(
+            name="Toyota", country="Japan"
+        )
+
+    def test_search_manufacturer_by_name(self):
+        response = self.client.get(MANUFACTURER_URL, {"name": "bm"})
+
+        self.assertEqual(response.status_code, 200)
+        manufacturers = response.context["manufacturer_list"]
+
+        self.assertIn(self.manufacturer_bmw, manufacturers)
+        self.assertNotIn(self.manufacturer_audi, manufacturers)
+        self.assertNotIn(self.manufacturer_toyota, manufacturers)
+
+    def test_search_manufacturer_empty_query(self):
+        response = self.client.get(MANUFACTURER_URL, {"name": ""})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["manufacturer_list"]), 3)
+
+
+class CarSearchTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test_user",
+            password="password123",
+        )
+        self.client.force_login(self.user)
+
+        self.manufacturer = Manufacturer.objects.create(
+            name="Toyota", country="Japan"
+        )
+
+        self.car_camry = Car.objects.create(
+            model="Toyota Camry",
+            manufacturer=self.manufacturer,
+        )
+        self.car_corolla = Car.objects.create(
+            model="Toyota Corolla",
+            manufacturer=self.manufacturer,
+        )
+        self.car_prius = Car.objects.create(
+            model="Toyota Prius",
+            manufacturer=self.manufacturer,
+        )
+
+    def test_search_car_by_model(self):
+        response = self.client.get(CAR_URL, {"model": "cam"})
+        self.assertEqual(response.status_code, 200)
+        cars = response.context["car_list"]
+
+        self.assertIn(self.car_camry, cars)
+        self.assertNotIn(self.car_corolla, cars)
+        self.assertNotIn(self.car_prius, cars)
+
+    def test_search_car_multiple_matches(self):
+        response = self.client.get(CAR_URL, {"model": "toyota"})
+        self.assertEqual(response.status_code, 200)
+        cars = response.context["car_list"]
+
+        self.assertIn(self.car_camry, cars)
+        self.assertIn(self.car_corolla, cars)
+        self.assertIn(self.car_prius, cars)
